@@ -190,25 +190,38 @@ const CITY_TYPE_DISTRICT_WEIGHTS: Record<string, Partial<Record<DistrictType, nu
 };
 
 function assignDistrictType(
-  _seed: Point,
+  seed: Point,
   centerDist: number,
   maxDist: number,
   cityType: string,
   rng: Rng,
   usedTypes: DistrictType[],
+  hasCost: boolean,
+  hasRiver: boolean,
 ): DistrictType {
   const ratio = centerDist / maxDist;
   const weights = CITY_TYPE_DISTRICT_WEIGHTS[cityType] ?? CITY_TYPE_DISTRICT_WEIGHTS.mixed;
 
-  // Center bias: commercial / administrative near center
-  // Edge bias: industrial / port / developing on edges
+  // Terrain proximity flags
+  // Coast is generated on bottom (y > 65%) or right (x > 65%) — boost port near either edge
+  const isCoastalEdge = hasCost && (seed.y > MAP_H * 0.60 || seed.x > MAP_W * 0.60);
+  // River runs roughly through center-x of map — boost industrial/historic near center-x, outer rows
+  const isRiverAdjacent = hasRiver && ratio > 0.3 && Math.abs(seed.x - CX) < MAP_W * 0.25;
+
   const types: DistrictType[] = ['commercial', 'residential', 'industrial', 'cultural', 'administrative', 'entertainment', 'historic', 'port', 'developing'];
   const w = types.map((t) => {
     let base = weights[t] ?? 0.5;
+    // Center bias: commercial / administrative near center
     if (ratio < 0.3 && (t === 'commercial' || t === 'administrative')) base *= 2.5;
-    if (ratio > 0.65 && (t === 'industrial' || t === 'port' || t === 'developing')) base *= 2;
+    // Edge bias: industrial / port / developing on edges
+    if (ratio > 0.65 && (t === 'industrial' || t === 'developing')) base *= 2;
     if (ratio > 0.5 && t === 'residential') base *= 1.5;
-    // Slightly reduce if already used
+    // Terrain coupling: port districts should sit near the coast
+    if (isCoastalEdge && t === 'port') base *= 4;
+    if (!isCoastalEdge && t === 'port' && !hasCost) base *= 0.3; // suppress port when no coast
+    // River-adjacent: slight boost for industrial and historic districts
+    if (isRiverAdjacent && (t === 'industrial' || t === 'historic')) base *= 1.6;
+    // Reduce over-represented types
     if (usedTypes.filter(u => u === t).length >= 2) base *= 0.4;
     return Math.max(0.1, base);
   });
@@ -275,15 +288,21 @@ export function generateDistricts(
   rng: Rng,
   cityType: string,
   numDistricts: number,
+  hasCost = false,
+  hasRiver = false,
 ): District[] {
   // Place seed points — central one is always near map center
   const seeds: Point[] = [{ x: CX + rng.range(-20, 20), y: CY + rng.range(-20, 20) }];
-  while (seeds.length < numDistricts) {
+  const MAX_SEED_ATTEMPTS = 300;
+  let attempts = 0;
+  while (seeds.length < numDistricts && attempts < MAX_SEED_ATTEMPTS) {
+    attempts++;
     const angle = rng.range(0, Math.PI * 2);
     const r = rng.range(100, Math.min(CX, CY) * 0.9);
     const p = { x: CX + Math.cos(angle) * r, y: CY + Math.sin(angle) * r };
-    // Ensure minimum spacing
-    if (seeds.every(s => distance(s, p) > 80)) seeds.push(p);
+    // Ensure minimum spacing; relax constraint if attempts are running high
+    const minDist = attempts > 200 ? 50 : 80;
+    if (seeds.every(s => distance(s, p) > minDist)) seeds.push(p);
   }
 
   const polygons = buildVoronoiPolygons(seeds, MAP_W, MAP_H).map(poly =>
@@ -296,7 +315,7 @@ export function generateDistricts(
 
   return seeds.map((seed, i) => {
     const centerDist = distance(seed, { x: CX, y: CY });
-    const type = assignDistrictType(seed, centerDist, maxDist, cityType, rng, usedTypes);
+    const type = assignDistrictType(seed, centerDist, maxDist, cityType, rng, usedTypes, hasCost, hasRiver);
     usedTypes.push(type);
 
     const name = generateDistrictName(rng, type, usedNames);

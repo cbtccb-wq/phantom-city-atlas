@@ -1,6 +1,7 @@
 /**
  * StatsView.tsx — Statistics dashboard with Recharts
  */
+import { useMemo } from 'react';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -15,6 +16,15 @@ interface Props {
 
 export function StatsView({ city }: Props) {
   const { stats } = city;
+
+  const districtsByLandPrice = useMemo(
+    () => [...city.districts].sort((a, b) => b.landPriceLevel - a.landPriceLevel),
+    [city.districts]
+  );
+  const districtsBySafety = useMemo(
+    () => [...city.districts].sort((a, b) => b.safetyLevel - a.safetyLevel),
+    [city.districts]
+  );
 
   return (
     <div className="flex-1 overflow-y-auto p-6 bg-gray-50 space-y-6">
@@ -144,9 +154,7 @@ export function StatsView({ city }: Props) {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h3 className="text-sm font-bold text-gray-700 mb-3">地価ランキング</h3>
           <div className="space-y-2">
-            {[...city.districts]
-              .sort((a, b) => b.landPriceLevel - a.landPriceLevel)
-              .map((d, i) => (
+            {districtsByLandPrice.map((d, i) => (
                 <div key={d.id} className="flex items-center gap-2 text-xs">
                   <span className="w-4 text-gray-400 font-mono">{i + 1}</span>
                   <span className="flex-1 text-gray-700 truncate">{d.name}</span>
@@ -163,9 +171,7 @@ export function StatsView({ city }: Props) {
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <h3 className="text-sm font-bold text-gray-700 mb-3">治安比較</h3>
           <div className="space-y-2">
-            {[...city.districts]
-              .sort((a, b) => b.safetyLevel - a.safetyLevel)
-              .map((d, i) => (
+            {districtsBySafety.map((d, i) => (
                 <div key={d.id} className="flex items-center gap-2 text-xs">
                   <span className="w-4 text-gray-400 font-mono">{i + 1}</span>
                   <span className="flex-1 text-gray-700 truncate">{d.name}</span>

@@ -23,7 +23,11 @@ function loadSaved(): SavedCity[] {
 }
 
 function persistSaved(list: SavedCity[]) {
-  localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+  try {
+    localStorage.setItem(SAVED_KEY, JSON.stringify(list));
+  } catch (e) {
+    console.error('[CityStore] localStorage write failed:', e);
+  }
 }
 
 interface CityStore {

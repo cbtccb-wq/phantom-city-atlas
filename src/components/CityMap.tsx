@@ -3,7 +3,7 @@
  * Features: district polygons, terrain, transit lines, stations, landmarks
  * Interactions: zoom, drag, district click
  */
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import type { City, District, Point, TerrainFeature } from '../types/city';
 import { useCityStore } from '../stores/cityStore';
 
@@ -170,7 +170,7 @@ function DistrictLayer({
 }) {
   const getColor = (d: District) => {
     if (layer === 'safety') {
-      const h = Math.round(d.safetyLevel * 24); // 24–120 green spectrum
+      const h = Math.round(d.safetyLevel * 24);
       return `hsl(${h + 20}, 70%, 55%)`;
     }
     if (layer === 'landprice') {
@@ -180,12 +180,31 @@ function DistrictLayer({
     return d.color;
   };
 
+  // Pre-calculate label positions once per city change
+  const labelPositions = useMemo(() =>
+    city.districts.map(d => ({
+      id: d.id,
+      cx: d.polygon.length > 0 ? d.polygon.reduce((s, p) => s + p.x, 0) / d.polygon.length : 0,
+      cy: d.polygon.length > 0 ? d.polygon.reduce((s, p) => s + p.y, 0) / d.polygon.length : 0,
+    })),
+    [city.districts]
+  );
+
   return (
     <g className="districts">
-      {city.districts.map((d) => {
+      {city.districts.map((d, i) => {
         const isSelected = d.id === selectedId;
+        const { cx, cy } = labelPositions[i];
         return (
-          <g key={d.id} onClick={() => onSelect(d)} style={{ cursor: 'pointer' }}>
+          <g
+            key={d.id}
+            onClick={() => onSelect(d)}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(d); } }}
+            tabIndex={0}
+            role="button"
+            aria-label={`${d.name}地区の詳細を表示`}
+            style={{ cursor: 'pointer', outline: 'none' }}
+          >
             <path
               d={pointsToPath(d.polygon)}
               fill={getColor(d)}
@@ -200,30 +219,25 @@ function DistrictLayer({
               fill="transparent"
               stroke="transparent"
               strokeWidth={6}
-              className="hover-target"
             />
             {/* District label */}
-            {d.polygon.length > 0 && (() => {
-              const cx = d.polygon.reduce((s, p) => s + p.x, 0) / d.polygon.length;
-              const cy = d.polygon.reduce((s, p) => s + p.y, 0) / d.polygon.length;
-              return (
-                <text
-                  x={cx} y={cy}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  fontSize={11}
-                  fontWeight={isSelected ? 700 : 500}
-                  fill={isSelected ? '#1e293b' : '#374151'}
-                  stroke="white"
-                  strokeWidth={3}
-                  paintOrder="stroke"
-                  fontFamily="'Noto Sans JP', sans-serif"
-                  style={{ pointerEvents: 'none', userSelect: 'none' }}
-                >
-                  {d.name}
-                </text>
-              );
-            })()}
+            {d.polygon.length > 0 && (
+              <text
+                x={cx} y={cy}
+                textAnchor="middle"
+                dominantBaseline="middle"
+                fontSize={11}
+                fontWeight={isSelected ? 700 : 500}
+                fill={isSelected ? '#1e293b' : '#374151'}
+                stroke="white"
+                strokeWidth={3}
+                paintOrder="stroke"
+                fontFamily="'Noto Sans JP', sans-serif"
+                style={{ pointerEvents: 'none', userSelect: 'none' }}
+              >
+                {d.name}
+              </text>
+            )}
           </g>
         );
       })}

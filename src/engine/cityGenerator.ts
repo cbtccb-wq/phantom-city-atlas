@@ -149,7 +149,7 @@ const RUMOR_TEMPLATES = [
 // ── Stats generation ──────────────────────────────────────────────────────────
 
 function generateStats(rng: ReturnType<typeof createRng>, districts: District[], foundingYear: number): CityStats {
-  const currentYear = 2024;
+  const currentYear = new Date().getFullYear();
   const years: number[] = [];
   for (let y = foundingYear + 50; y <= currentYear; y += 10) years.push(y);
 
@@ -182,18 +182,26 @@ export function generateCity(seed: number): City {
   const cityType = rng.pick(CITY_TYPES);
   const { name, englishName } = generateCityName(rng);
   const tagline = generateTagline(rng, cityType);
-  const population = Math.round(rng.range(50000, 800000));
+  const targetPopulation = Math.round(rng.range(50000, 800000));
   const area = Math.round(rng.range(30, 500));
   const themeColor = CITY_THEME_COLORS[cityType];
   const foundingYear = rng.int(1600, 1900);
 
-  // Terrain flags
+  // Terrain flags (decided before district generation so they influence type assignment)
   const hasCost = cityType === 'port' || rng.next() < 0.3;
   const hasRiver = rng.next() < 0.6;
 
   // Generate components
   const numDistricts = rng.int(6, 10);
-  const districts = generateDistricts(rng, cityType, numDistricts);
+  const districts = generateDistricts(rng, cityType, numDistricts, hasCost, hasRiver);
+
+  // Align district populations to sum to the city target population
+  const rawTotal = districts.reduce((s, d) => s + d.population, 0);
+  if (rawTotal > 0) {
+    districts.forEach(d => { d.population = Math.round(d.population / rawTotal * targetPopulation); });
+  }
+  const population = districts.reduce((s, d) => s + d.population, 0);
+
   const lines = generateLines(rng, districts, cityType);
   const landmarks = generateLandmarks(rng, districts);
   const terrain = generateTerrain(rng, hasCost, hasRiver);

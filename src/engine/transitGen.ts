@@ -43,8 +43,14 @@ export function generateLines(rng: Rng, districts: District[], cityType: string)
   const usedColors = new Set<string>();
   const lines: Line[] = [];
 
+  // Pre-calculate all centroids once to avoid redundant computation
+  const centroids = new Map<string, Point>(districts.map(d => [d.id, districtCentroid(d)]));
+
   // Sort districts by population for "important" ones
   const sorted = [...districts].sort((a, b) => b.population - a.population);
+
+  // Track anchor reuse so routes don't all start from the same hub
+  const anchorUsage = new Map<string, number>();
 
   for (let l = 0; l < numLines; l++) {
     const type: TransitType = rng.pick(typePool);
@@ -52,37 +58,33 @@ export function generateLines(rng: Rng, districts: District[], cityType: string)
     do { color = rng.pick(LINE_COLORS); } while (usedColors.has(color) && usedColors.size < LINE_COLORS.length);
     usedColors.add(color);
 
-    // Choose anchor districts for this line
+    // Choose anchor — penalise districts already used as anchor twice
     const numStops = rng.int(3, Math.min(6, districts.length));
     const lineDistricts: District[] = [];
 
-    // Always include a high-population or commercial district
-    const anchor = sorted.find(d => !lineDistricts.includes(d)) ?? sorted[0];
+    const anchor = sorted.find(d => (anchorUsage.get(d.id) ?? 0) < 2) ?? sorted[0];
+    anchorUsage.set(anchor.id, (anchorUsage.get(anchor.id) ?? 0) + 1);
     lineDistricts.push(anchor);
 
-    // Add more districts by proximity
+    // Add districts by proximity — compute jitter BEFORE sorting to preserve determinism
     while (lineDistricts.length < numStops) {
       const last = lineDistricts[lineDistricts.length - 1];
-      const lastPos = districtCentroid(last);
-      const candidate = districts
-        .filter(d => !lineDistricts.includes(d))
-        .sort((a, b) => {
-          const da = Math.hypot(districtCentroid(a).x - lastPos.x, districtCentroid(a).y - lastPos.y);
-          const db = Math.hypot(districtCentroid(b).x - lastPos.x, districtCentroid(b).y - lastPos.y);
-          return da - db + rng.range(-80, 80); // some randomness
-        })[0];
+      const lastPos = centroids.get(last.id)!;
+      const candidates = districts.filter(d => !lineDistricts.includes(d));
+      const scored = candidates.map(c => {
+        const cp = centroids.get(c.id)!;
+        return { d: c, score: Math.hypot(cp.x - lastPos.x, cp.y - lastPos.y) + rng.range(-80, 80) };
+      });
+      scored.sort((a, b) => a.score - b.score);
+      const candidate = scored[0]?.d;
       if (!candidate) break;
       lineDistricts.push(candidate);
     }
 
-    // For circular lines, ensure loop-back
-    if (type === 'circular' && lineDistricts.length >= 3) {
-      lineDistricts.push(lineDistricts[0]);
-    }
-
+    // Circular lines: type alone signals the loop — don't duplicate the anchor station
     const stationNameSet = new Set<string>();
     const stations: Station[] = lineDistricts.map((d, si) => {
-      const pos = districtCentroid(d);
+      const pos = centroids.get(d.id)!;
       // Offset slightly from centroid for visual interest
       const sx = pos.x + rng.range(-20, 20);
       const sy = pos.y + rng.range(-20, 20);
