@@ -1,23 +1,66 @@
 /**
- * claudeApi.ts — Claude API integration for rich content generation
- * Uses claude-haiku-4-5 for fast, low-cost generation.
- * API key: VITE_ANTHROPIC_API_KEY in .env
+ * aiApi.ts — AI content generation (OpenAI / Gemini)
+ * Priority: OpenAI (gpt-4o-mini) → Gemini (gemini-1.5-flash)
+ * Keys: VITE_OPENAI_API_KEY / VITE_GEMINI_API_KEY in .env
  */
-import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Landmark } from '../types/city';
 
-const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY as string | undefined;
+const openaiKey = import.meta.env.VITE_OPENAI_API_KEY as string | undefined;
+const geminiKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
 
-let client: Anthropic | null = null;
-function getClient(): Anthropic | null {
-  if (!apiKey) return null;
-  if (!client) {
-    client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
-  }
-  return client;
+// ── Provider selection ────────────────────────────────────────────────────────
+
+type Provider = 'openai' | 'gemini' | 'none';
+
+function getProvider(): Provider {
+  if (openaiKey) return 'openai';
+  if (geminiKey) return 'gemini';
+  return 'none';
 }
 
-// In-memory cache: key → generated text
+let openaiClient: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!openaiClient) {
+    openaiClient = new OpenAI({ apiKey: openaiKey!, dangerouslyAllowBrowser: true });
+  }
+  return openaiClient;
+}
+
+let geminiClient: GoogleGenerativeAI | null = null;
+function getGemini(): GoogleGenerativeAI {
+  if (!geminiClient) {
+    geminiClient = new GoogleGenerativeAI(geminiKey!);
+  }
+  return geminiClient;
+}
+
+// ── Core generate ─────────────────────────────────────────────────────────────
+
+async function generate(prompt: string, maxTokens: number): Promise<string> {
+  const provider = getProvider();
+
+  if (provider === 'openai') {
+    const res = await getOpenAI().chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: maxTokens,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return res.choices[0]?.message?.content?.trim() ?? '';
+  }
+
+  if (provider === 'gemini') {
+    const model = getGemini().getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const res = await model.generateContent(prompt);
+    return res.response.text().trim();
+  }
+
+  return '（APIキーが設定されていません。.env に VITE_OPENAI_API_KEY または VITE_GEMINI_API_KEY を設定してください）';
+}
+
+// ── Cache ─────────────────────────────────────────────────────────────────────
+
 const cache = new Map<string, string>();
 
 // ── Landmark detail ───────────────────────────────────────────────────────────
@@ -29,11 +72,6 @@ export async function generateLandmarkDetail(
 ): Promise<string> {
   const cacheKey = `landmark:${cityName}:${landmark.id}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
-
-  const cl = getClient();
-  if (!cl) {
-    return '（APIキーが設定されていません。.env に VITE_ANTHROPIC_API_KEY を設定してください）';
-  }
 
   const prompt = `あなたは架空都市「${cityName}」の公式観光ガイドライターです。
 以下のスポットについて、訪れた観光客に向けた詳細な紹介文を200〜250文字で書いてください。
@@ -50,21 +88,21 @@ export async function generateLandmarkDetail(
 - 説明文のみを出力（タイトルや箇条書きは不要）`;
 
   try {
-    const msg = await cl.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const text = msg.content[0].type === 'text' ? msg.content[0].text.trim() : '';
+    const text = await generate(prompt, 512);
     cache.set(cacheKey, text);
     return text;
   } catch (e) {
-    console.error('[claudeApi] landmark generation failed:', e);
+    console.error('[aiApi] landmark generation failed:', e);
     return '（詳細の生成に失敗しました。しばらく後に再試行してください）';
   }
 }
 
 // ── Legend detail ─────────────────────────────────────────────────────────────
+
+const CITY_TYPE_LABEL: Record<string, string> = {
+  port: '港湾都市', industrial: '工業都市', academic: '学術都市',
+  tourist: '観光都市', administrative: '行政都市', bedroom: 'ベッドタウン', mixed: '複合都市',
+};
 
 export async function generateLegendDetail(
   cityName: string,
@@ -75,18 +113,8 @@ export async function generateLegendDetail(
   const cacheKey = `legend:${cityName}:${legendIndex}`;
   if (cache.has(cacheKey)) return cache.get(cacheKey)!;
 
-  const cl = getClient();
-  if (!cl) {
-    return '（APIキーが設定されていません。.env に VITE_ANTHROPIC_API_KEY を設定してください）';
-  }
-
-  const cityTypeLabel: Record<string, string> = {
-    port: '港湾都市', industrial: '工業都市', academic: '学術都市',
-    tourist: '観光都市', administrative: '行政都市', bedroom: 'ベッドタウン', mixed: '複合都市',
-  };
-
   const prompt = `あなたは都市伝説・怪談の調査記録者です。
-架空都市「${cityName}」（${cityTypeLabel[cityContext.type] ?? '都市'}、人口${cityContext.population.toLocaleString('ja-JP')}人）に伝わる以下の噂について、
+架空都市「${cityName}」（${CITY_TYPE_LABEL[cityContext.type] ?? '都市'}、人口${cityContext.population.toLocaleString('ja-JP')}人）に伝わる以下の噂について、
 詳細な調査記録・目撃証言・後日談を300〜350文字で記述してください。
 
 元の噂: ${legend}
@@ -99,16 +127,11 @@ export async function generateLegendDetail(
 - 本文のみを出力`;
 
   try {
-    const msg = await cl.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 768,
-      messages: [{ role: 'user', content: prompt }],
-    });
-    const text = msg.content[0].type === 'text' ? msg.content[0].text.trim() : '';
+    const text = await generate(prompt, 768);
     cache.set(cacheKey, text);
     return text;
   } catch (e) {
-    console.error('[claudeApi] legend generation failed:', e);
+    console.error('[aiApi] legend generation failed:', e);
     return '（詳細の生成に失敗しました。しばらく後に再試行してください）';
   }
 }
