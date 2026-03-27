@@ -6,6 +6,7 @@ import { useState, useMemo } from 'react';
 import type { City } from '../types/city';
 import { createRng } from '../engine/rng';
 import { generateLegendDetail } from '../lib/claudeApi';
+import { MiniCityMap } from './MiniCityMap';
 
 // Extra deep legend generation using city seed
 function generateDeepLegends(city: City): string[] {
@@ -139,8 +140,8 @@ export function LegendsView({ city }: Props) {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left: legend list */}
-      <div className="flex-1 overflow-y-auto bg-slate-950 text-slate-300 min-w-0">
+      {/* Left: legend list — fixed width */}
+      <div className="w-96 flex-shrink-0 overflow-y-auto bg-slate-950 text-slate-300">
         {/* Header */}
         <div className="px-6 py-5 border-b border-slate-800">
           <div className="flex items-center gap-3">
@@ -223,7 +224,7 @@ export function LegendsView({ city }: Props) {
         </div>
       </div>
 
-      {/* Right: detail panel */}
+      {/* Middle: detail panel */}
       {selectedIndex !== null && (
         <LegendDetailPanel
           legend={allRumors[selectedIndex]}
@@ -233,6 +234,11 @@ export function LegendsView({ city }: Props) {
           onClose={() => setSelectedIndex(null)}
         />
       )}
+
+      {/* Right: city overview map */}
+      <div className="flex-1 min-w-0 border-l border-slate-800">
+        <MiniCityMap city={city} />
+      </div>
     </div>
   );
 }

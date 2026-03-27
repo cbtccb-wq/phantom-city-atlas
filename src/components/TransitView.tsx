@@ -3,6 +3,7 @@
  * Diagram-style transit map: horizontal lines, vertical station dots
  */
 import type { City, Line, Station } from '../types/city';
+import { MiniCityMap } from './MiniCityMap';
 
 const TYPE_LABELS: Record<string, string> = {
   subway:   '地下鉄',
@@ -171,8 +172,8 @@ export function TransitView({ city }: Props) {
         ))}
       </div>
 
-      {/* Right panel: search + detail */}
-      <div className="w-64 bg-white border-l border-gray-200 flex flex-col">
+      {/* Center panel: search + detail */}
+      <div className="w-56 flex-shrink-0 bg-white border-l border-gray-200 flex flex-col">
         {/* Search */}
         <div className="p-3 border-b border-gray-100">
           <input
@@ -214,6 +215,20 @@ export function TransitView({ city }: Props) {
             )
           }
         </div>
+      </div>
+
+      {/* Right: mini-map */}
+      <div className="flex-1 min-w-0 border-l border-gray-200">
+        <MiniCityMap
+          city={city}
+          highlightX={selectedStation?.station.x}
+          highlightY={selectedStation?.station.y}
+          highlightLine={selectedStation?.line}
+          label={selectedStation
+            ? `${selectedStation.station.name} — ${selectedStation.line.name}`
+            : undefined
+          }
+        />
       </div>
     </div>
   );

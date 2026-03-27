@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import type { City, Landmark, LandmarkCategory } from '../types/city';
 import { generateLandmarkDetail } from '../lib/claudeApi';
+import { MiniCityMap } from './MiniCityMap';
 
 const CATEGORY_LABELS: Record<LandmarkCategory, string> = {
   station:       '駅',
@@ -137,8 +138,8 @@ export function TouristView({ city }: Props) {
 
   return (
     <div className="flex h-full min-h-0">
-      {/* Left: landmark list */}
-      <div className="flex-1 overflow-y-auto p-6 bg-gray-50 min-w-0">
+      {/* Left: landmark list — fixed width */}
+      <div className="w-96 flex-shrink-0 overflow-y-auto p-6 bg-gray-50">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-gray-800">観光スポット</h2>
           <span className="text-xs text-gray-400">{sorted.length}件</span>
@@ -193,7 +194,7 @@ export function TouristView({ city }: Props) {
         </div>
       </div>
 
-      {/* Right: detail panel */}
+      {/* Middle: text detail panel */}
       {selected && (
         <LandmarkDetailPanel
           lm={selected}
@@ -202,6 +203,16 @@ export function TouristView({ city }: Props) {
           onClose={() => setSelected(null)}
         />
       )}
+
+      {/* Right: mini-map — always visible */}
+      <div className="flex-1 min-w-0 border-l border-gray-200">
+        <MiniCityMap
+          city={city}
+          highlightX={selected?.x}
+          highlightY={selected?.y}
+          label={selected ? `${selected.name}` : undefined}
+        />
+      </div>
     </div>
   );
 }
